@@ -24,6 +24,95 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return labels;
   }
 
+  double _maxYFor(List<double> values) {
+    final maxValue = values.fold<double>(
+      0,
+      (max, value) => value > max ? value : max,
+    );
+    if (maxValue <= 0) return 1;
+    return maxValue * 1.12;
+  }
+
+  String _formatAmount(double value) {
+    if (value >= 1000) {
+      final compact = value / 1000;
+      return '${compact.toStringAsFixed(compact % 1 == 0 ? 0 : 1)}K';
+    }
+    return value.toStringAsFixed(value % 1 == 0 ? 0 : 1);
+  }
+
+  Widget _monthTitle(List<String> labels, double value, TitleMeta meta) {
+    final idx = value.round();
+    if (value != idx || idx < 0 || idx >= labels.length) {
+      return const SizedBox.shrink();
+    }
+
+    return SideTitleWidget(meta: meta, child: Text(labels[idx]));
+  }
+
+  Widget _amountTitle(double value, TitleMeta meta) {
+    return SideTitleWidget(meta: meta, child: Text(_formatAmount(value)));
+  }
+
+  Widget _reportChart({
+    required List<double> values,
+    required List<String> labels,
+    required Color color,
+    double? height,
+  }) {
+    final chart = Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: LineChart(
+          LineChartData(
+            minX: 0,
+            maxX: (_months - 1).toDouble(),
+            minY: 0,
+            maxY: _maxYFor(values),
+            gridData: FlGridData(show: true),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  interval: 1,
+                  getTitlesWidget: (v, meta) => _monthTitle(labels, v, meta),
+                ),
+              ),
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 56,
+                  getTitlesWidget: _amountTitle,
+                ),
+              ),
+            ),
+            lineBarsData: [
+              LineChartBarData(
+                spots: List.generate(
+                  values.length,
+                  (i) => FlSpot(i.toDouble(), values[i]),
+                ),
+                isCurved: true,
+                dotData: FlDotData(show: true),
+                barWidth: 3,
+                color: color,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (height == null) return Expanded(child: chart);
+    return SizedBox(height: height, child: chart);
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<OrderProvider>();
@@ -65,107 +154,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
             const SizedBox(height: 16),
             Text('Sales', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            Expanded(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: LineChart(
-                    LineChartData(
-                      gridData: FlGridData(show: true),
-                      titlesData: FlTitlesData(
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            getTitlesWidget: (v, meta) {
-                              final idx = v.toInt();
-                              if (idx < 0 || idx >= labels.length) {
-                                return const SizedBox.shrink();
-                              }
-
-                              return SideTitleWidget(
-                                axisSide: meta.axisSide,
-                                child: Text(labels[idx]),
-                              );
-                            },
-                          ),
-                        ),
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 56,
-                          ),
-                        ),
-                      ),
-                      minX: 0,
-                      maxX: (_months - 1).toDouble(),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: List.generate(
-                            sales.length,
-                            (i) => FlSpot(i.toDouble(), sales[i]),
-                          ),
-                          isCurved: true,
-                          dotData: FlDotData(show: true),
-                          barWidth: 3,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+            _reportChart(
+              values: sales,
+              labels: labels,
+              color: Theme.of(context).colorScheme.secondary,
             ),
             const SizedBox(height: 12),
             Text('Commission', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            SizedBox(
+            _reportChart(
               height: 180,
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: LineChart(
-                    LineChartData(
-                      gridData: FlGridData(show: true),
-                      titlesData: FlTitlesData(
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            getTitlesWidget: (v, meta) {
-                              final idx = v.toInt();
-                              if (idx < 0 || idx >= labels.length) {
-                                return const SizedBox.shrink();
-                              }
-                              return SideTitleWidget(
-                                axisSide: meta.axisSide,
-                                child: Text(labels[idx]),
-                              );
-                            },
-                          ),
-                        ),
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 56,
-                          ),
-                        ),
-                      ),
-                      minX: 0,
-                      maxX: (_months - 1).toDouble(),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: List.generate(
-                            commission.length,
-                            (i) => FlSpot(i.toDouble(), commission[i]),
-                          ),
-                          isCurved: true,
-                          dotData: FlDotData(show: true),
-                          barWidth: 3,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              values: commission,
+              labels: labels,
+              color: Theme.of(context).colorScheme.primary,
             ),
           ],
         ),
