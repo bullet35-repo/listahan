@@ -62,6 +62,53 @@ class OrderProvider with ChangeNotifier {
 
     try {
       _orders = await _dbHelper.getOrders();
+
+      // Seed sample data in debug mode when database is empty to demo charts
+      if (_orders.isEmpty && kDebugMode) {
+        final now = DateTime.now();
+        final samples = [
+          OrderItem(
+            customerName: 'Alice',
+            itemName: 'Shirt',
+            price: 500,
+            commission: 50,
+            date: now.subtract(const Duration(days: 40)),
+            paymentStatus: PaymentStatus.paid,
+            paidAmount: 500,
+          ),
+          OrderItem(
+            customerName: 'Bob',
+            itemName: 'Pants',
+            price: 1200,
+            commission: 120,
+            date: now.subtract(const Duration(days: 25)),
+            paymentStatus: PaymentStatus.partial,
+            paidAmount: 600,
+          ),
+          OrderItem(
+            customerName: 'Cathy',
+            itemName: 'Shoes',
+            price: 850,
+            commission: 85,
+            date: now.subtract(const Duration(days: 10)),
+            paymentStatus: PaymentStatus.unpaid,
+            paidAmount: 0,
+          ),
+          OrderItem(
+            customerName: 'Dave',
+            itemName: 'Hat',
+            price: 300,
+            commission: 30,
+            date: now.subtract(const Duration(days: 3)),
+            paymentStatus: PaymentStatus.paid,
+            paidAmount: 300,
+          ),
+        ];
+        for (final s in samples) {
+          await _dbHelper.insertOrder(s);
+        }
+        _orders = await _dbHelper.getOrders();
+      }
     } catch (e) {
       if (kDebugMode) {
         print("Error fetching orders: $e");
