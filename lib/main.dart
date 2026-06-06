@@ -6,6 +6,7 @@ import 'screens/add_order_screen.dart';
 import 'screens/edit_order_screen.dart';
 import 'screens/main_shell.dart';
 import 'screens/orders_list_screen.dart';
+import 'screens/reports_screen.dart';
 import 'models/order.dart';
 
 import 'database/database_init_stub.dart'
@@ -44,6 +45,7 @@ class BotoysListahanApp extends StatelessWidget {
         '/': (context) => const MainShell(),
         '/add_order': (context) => const AddOrderScreen(),
         '/orders_list': (context) => const OrdersListScreen(),
+        '/reports': (context) => const ReportsScreen(),
       },
       onGenerateRoute: (settings) {
         if (settings.name == '/edit_order') {

@@ -50,6 +50,12 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
+          ListTile(
+            leading: const Icon(Icons.show_chart_rounded),
+            title: const Text('Reports'),
+            subtitle: const Text('View sales and commission trends'),
+            onTap: () => Navigator.pushNamed(context, '/reports'),
+          ),
         ],
       ),
     );

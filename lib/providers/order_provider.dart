@@ -134,4 +134,34 @@ class OrderProvider with ChangeNotifier {
         .where((o) => o.customerName == customerName)
         .fold(0.0, (sum, o) => sum + o.balance);
   }
+
+  /// Returns sales totals for the last [months] months.
+  /// The returned list is ordered from oldest to newest.
+  List<double> salesSeries({int months = 6}) {
+    final now = DateTime.now();
+    final series = List<double>.filled(months, 0.0);
+    for (final o in _orders) {
+      final diff = (now.year - o.date.year) * 12 + (now.month - o.date.month);
+      if (diff >= 0 && diff < months) {
+        final idx = months - 1 - diff; // oldest -> index 0
+        series[idx] += o.price;
+      }
+    }
+    return series;
+  }
+
+  /// Returns commission totals for the last [months] months.
+  /// The returned list is ordered from oldest to newest.
+  List<double> commissionSeries({int months = 6}) {
+    final now = DateTime.now();
+    final series = List<double>.filled(months, 0.0);
+    for (final o in _orders) {
+      final diff = (now.year - o.date.year) * 12 + (now.month - o.date.month);
+      if (diff >= 0 && diff < months) {
+        final idx = months - 1 - diff;
+        series[idx] += o.commission;
+      }
+    }
+    return series;
+  }
 }
