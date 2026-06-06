@@ -350,6 +350,15 @@ class OrderProvider with ChangeNotifier {
     await fetchOrders();
   }
 
+  Future<void> mergeBackupJson(String rawJson) async {
+    final backup = parseBackupJson(rawJson);
+    await _dbHelper.mergeBackup(
+      orders: backup.orders,
+      payments: backup.payments,
+    );
+    await fetchOrders();
+  }
+
   Future<void> addPayment({
     required OrderItem order,
     required double amount,

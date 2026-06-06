@@ -264,6 +264,50 @@ class DatabaseHelper {
     });
   }
 
+  Future<void> mergeBackup({
+    required List<OrderItem> orders,
+    required List<PaymentRecord> payments,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final idMap = <int, int>{};
+      final existingRows = await txn.query('orders');
+      final existingKeys = existingRows
+          .map((row) => _entryDuplicateKey(OrderItem.fromMap(row)))
+          .toSet();
+      for (final order in orders) {
+        final key = _entryDuplicateKey(order);
+        if (existingKeys.contains(key)) continue;
+
+        final map = order.toMap()..remove('id');
+        final newId = await txn.insert('orders', map);
+        existingKeys.add(key);
+        final oldId = order.id;
+        if (oldId != null) idMap[oldId] = newId;
+      }
+
+      for (final payment in payments) {
+        final mappedOrderId = idMap[payment.orderId];
+        if (mappedOrderId == null) continue;
+        final map = payment.toMap()
+          ..remove('id')
+          ..['orderId'] = mappedOrderId;
+        await txn.insert('payments', map);
+      }
+    });
+  }
+
+  String _entryDuplicateKey(OrderItem order) {
+    return [
+      order.customerName.trim().toLowerCase(),
+      order.itemName.trim().toLowerCase(),
+      order.type.trim().toLowerCase(),
+      order.price.toStringAsFixed(2),
+      order.commission.toStringAsFixed(2),
+      order.date.toIso8601String(),
+    ].join('|');
+  }
+
   Future<int> deleteOrder(int id) async {
     final db = await database;
     await db.delete('payments', where: 'orderId = ?', whereArgs: [id]);

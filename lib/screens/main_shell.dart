@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
+import '../services/backup_import_service.dart';
 import '../services/export_service.dart';
 import 'home_screen.dart';
 import 'customers_screen.dart';
@@ -134,12 +135,13 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _showExportSheet(BuildContext context) {
+    final parentContext = context;
     final provider = context.read<OrderProvider>();
     final orders = provider.filteredOrders;
 
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -148,15 +150,15 @@ class _MainShellState extends State<MainShell> {
               Text(
                 'Export Entries',
                 style: Theme.of(
-                  context,
+                  sheetContext,
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
                 '${orders.length} entries (current month filter)',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(
-                    context,
+                    sheetContext,
                   ).colorScheme.onSurface.withValues(alpha: 0.6),
                 ),
               ),
@@ -166,9 +168,9 @@ class _MainShellState extends State<MainShell> {
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: () {
-                        Navigator.pop(context);
+                        Navigator.pop(sheetContext);
                         ExportService.exportToCsv(orders);
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        ScaffoldMessenger.of(parentContext).showSnackBar(
                           const SnackBar(content: Text('Export started')),
                         );
                       },
@@ -183,9 +185,9 @@ class _MainShellState extends State<MainShell> {
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: () {
-                        Navigator.pop(context);
+                        Navigator.pop(sheetContext);
                         ExportService.exportToPdf(orders);
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        ScaffoldMessenger.of(parentContext).showSnackBar(
                           const SnackBar(content: Text('Export started')),
                         );
                       },
@@ -203,12 +205,12 @@ class _MainShellState extends State<MainShell> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    Navigator.pop(context);
+                    Navigator.pop(sheetContext);
                     ExportService.exportBackup(
                       orders: provider.orders,
                       payments: provider.payments,
                     );
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    ScaffoldMessenger.of(parentContext).showSnackBar(
                       const SnackBar(content: Text('Backup export started')),
                     );
                   },
@@ -221,11 +223,11 @@ class _MainShellState extends State<MainShell> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    Navigator.pop(context);
-                    _showRestoreDialog(context, provider);
+                    Navigator.pop(sheetContext);
+                    _restoreFromFile(parentContext, provider);
                   },
                   icon: const Icon(Icons.restore_rounded),
-                  label: const Text('Restore JSON'),
+                  label: const Text('Upload Backup JSON'),
                 ),
               ),
             ],
@@ -235,74 +237,52 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  Future<void> _showRestoreDialog(
+  Future<void> _restoreFromFile(
     BuildContext context,
     OrderProvider provider,
   ) async {
-    final controller = TextEditingController();
-    final submitted = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Restore Backup'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: controller,
-            minLines: 6,
-            maxLines: 10,
-            decoration: const InputDecoration(
-              labelText: 'Paste backup JSON',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(context, true),
-            icon: const Icon(Icons.restore_rounded),
-            label: const Text('Restore'),
-          ),
-        ],
-      ),
-    );
-
-    final backup = controller.text;
-    if (submitted != true || backup.trim().isEmpty || !context.mounted) return;
+    final backup = await pickBackupJson();
+    if (backup == null || backup.trim().isEmpty || !context.mounted) return;
 
     try {
       final preview = provider.previewBackupJson(backup);
       if (!context.mounted) return;
-      final confirmed = await showDialog<bool>(
+      final action = await showDialog<_RestoreAction>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Confirm Restore'),
           content: Text(
-            'This will replace local data with ${preview.entries} entries, '
+            'Backup contains ${preview.entries} entries, '
             '${preview.payments} payments, and ${preview.types} types.',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.pop(context, _RestoreAction.merge),
+              icon: const Icon(Icons.call_merge_rounded),
+              label: const Text('Merge'),
+            ),
             FilledButton.icon(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(context, _RestoreAction.replace),
               icon: const Icon(Icons.restore_rounded),
-              label: const Text('Restore'),
+              label: const Text('Replace'),
             ),
           ],
         ),
       );
-      if (confirmed != true || !context.mounted) return;
-      await provider.restoreBackupJson(backup);
+      if (action == null || !context.mounted) return;
+      if (action == _RestoreAction.merge) {
+        await provider.mergeBackupJson(backup);
+      } else {
+        await provider.restoreBackupJson(backup);
+      }
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Backup restored')));
+      ).showSnackBar(SnackBar(content: Text('Backup ${action.label}d')));
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
@@ -310,4 +290,13 @@ class _MainShellState extends State<MainShell> {
       ).showSnackBar(SnackBar(content: Text('Restore failed: $e')));
     }
   }
+}
+
+enum _RestoreAction {
+  merge('merge'),
+  replace('replace');
+
+  final String label;
+
+  const _RestoreAction(this.label);
 }
