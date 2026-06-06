@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/order.dart';
 import '../providers/order_provider.dart';
@@ -89,7 +90,7 @@ class CustomersScreen extends StatelessWidget {
                                     ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               Text(
-                                '${orders.length} order${orders.length == 1 ? '' : 's'} • ₱${totalPrice.toStringAsFixed(0)} total',
+                                '${orders.length} entr${orders.length == 1 ? 'y' : 'ies'} • ₱${totalPrice.toStringAsFixed(0)} total',
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ],
@@ -160,6 +161,19 @@ class CustomerDetailScreen extends StatelessWidget {
           0,
           (s, o) => s + o.commission,
         );
+        final orderIds = orders
+            .map((order) => order.id)
+            .whereType<int>()
+            .toSet();
+        final payments =
+            provider.payments
+                .where((payment) => orderIds.contains(payment.orderId))
+                .toList()
+              ..sort((a, b) => b.date.compareTo(a.date));
+        final totalPaid = payments.fold<double>(
+          0,
+          (sum, payment) => sum + payment.amount,
+        );
         final balance = provider.customerBalance(customerName);
 
         return Scaffold(
@@ -184,7 +198,7 @@ class CustomerDetailScreen extends StatelessWidget {
                       children: [
                         _buildStat(
                           context,
-                          'Orders',
+                          'Entries',
                           '${orders.length}',
                           Icons.receipt_long_rounded,
                         ),
@@ -202,6 +216,12 @@ class CustomerDetailScreen extends StatelessWidget {
                         ),
                         _buildStat(
                           context,
+                          'Paid',
+                          '₱${totalPaid.toStringAsFixed(0)}',
+                          Icons.payments_rounded,
+                        ),
+                        _buildStat(
+                          context,
                           'Balance',
                           '₱${balance.toStringAsFixed(0)}',
                           Icons.balance_rounded,
@@ -212,6 +232,41 @@ class CustomerDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              if (payments.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Recent Payments',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          ...payments.take(3).map((payment) {
+                            final entry = orders.firstWhere(
+                              (order) => order.id == payment.orderId,
+                            );
+                            return ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                '₱${payment.amount.toStringAsFixed(2)} • ${entry.itemName}',
+                              ),
+                              subtitle: Text(
+                                DateFormat.yMMMd().format(payment.date),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -220,7 +275,7 @@ class CustomerDetailScreen extends StatelessWidget {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Order history',
+                    'Entry history',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -235,6 +290,13 @@ class CustomerDetailScreen extends StatelessWidget {
                     final order = orders[index];
                     return OrderCard(
                       order: order,
+                      onTap: () {
+                        Navigator.pushNamed(
+                          context,
+                          '/entry_detail',
+                          arguments: order,
+                        );
+                      },
                       onEdit: () {
                         Navigator.pushNamed(
                           context,
@@ -263,8 +325,8 @@ class CustomerDetailScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Order'),
-        content: const Text('Are you sure you want to delete this order?'),
+        title: const Text('Delete Entry'),
+        content: const Text('Are you sure you want to delete this entry?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -276,7 +338,7 @@ class CustomerDetailScreen extends StatelessWidget {
               Navigator.pop(ctx);
               ScaffoldMessenger.of(
                 context,
-              ).showSnackBar(const SnackBar(content: Text('Order deleted')));
+              ).showSnackBar(const SnackBar(content: Text('Entry deleted')));
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),

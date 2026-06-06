@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/order.dart';
+import '../models/payment.dart';
 import '../providers/order_provider.dart';
+import '../services/export_service.dart';
 import '../widgets/order_type_field.dart';
+import '../widgets/payment_dialog.dart';
 import 'package:intl/intl.dart';
 
 void _hapticSuccess() => HapticFeedback.mediumImpact();
@@ -123,7 +126,7 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
       if (!mounted) return;
       _hapticSuccess();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order updated successfully!')),
+        const SnackBar(content: Text('Entry updated successfully!')),
       );
       Navigator.pop(context);
     } catch (e) {
@@ -139,15 +142,99 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
     }
   }
 
+  Future<void> _showAddPaymentDialog(OrderProvider provider) async {
+    final order = provider.orders.firstWhere(
+      (item) => item.id == widget.order.id,
+      orElse: () => widget.order,
+    );
+    final balance = provider.balanceForOrder(order);
+    final payment = await showDialog<PaymentDraft>(
+      context: context,
+      builder: (context) => PaymentDialog(maxAmount: balance),
+    );
+    if (payment == null) return;
+    try {
+      await provider.addPayment(
+        order: order,
+        amount: payment.amount,
+        date: payment.date,
+        note: payment.note,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Payment added')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Payment failed: $e')));
+    }
+  }
+
+  Future<void> _showEditPaymentDialog(
+    OrderProvider provider,
+    PaymentRecord payment,
+  ) async {
+    final order = provider.orders.firstWhere(
+      (item) => item.id == payment.orderId,
+    );
+    final maxAmount = provider.balanceForOrder(order) + payment.amount;
+    final draft = await showDialog<PaymentDraft>(
+      context: context,
+      builder: (context) =>
+          PaymentDialog(payment: payment, maxAmount: maxAmount),
+    );
+    if (draft == null) return;
+    try {
+      await provider.updatePayment(
+        payment: payment,
+        amount: draft.amount,
+        date: draft.date,
+        note: draft.note,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Payment updated')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Update failed: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit Order'),
+        title: const Text('Edit Entry'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          Consumer<OrderProvider>(
+            builder: (context, provider, child) {
+              final order = provider.orders.firstWhere(
+                (item) => item.id == widget.order.id,
+                orElse: () => widget.order,
+              );
+              final payments = order.id == null
+                  ? <PaymentRecord>[]
+                  : provider.paymentsForOrder(order.id!);
+              return IconButton(
+                icon: const Icon(Icons.receipt_long_rounded),
+                tooltip: 'Share receipt',
+                onPressed: () => ExportService.shareReceipt(
+                  order: order,
+                  payments: payments,
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -333,6 +420,114 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
+              Consumer<OrderProvider>(
+                builder: (context, provider, child) {
+                  final order = provider.orders.firstWhere(
+                    (item) => item.id == widget.order.id,
+                    orElse: () => widget.order,
+                  );
+                  final payments = order.id == null
+                      ? const []
+                      : provider.paymentsForOrder(order.id!);
+                  final paid = order.id == null
+                      ? order.paidAmount
+                      : provider.paidTotalForOrder(order.id!);
+                  final balance = (order.price - paid).clamp(0, order.price);
+
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Payment History',
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              FilledButton.icon(
+                                onPressed: () =>
+                                    _showAddPaymentDialog(provider),
+                                icon: const Icon(Icons.add_rounded),
+                                label: const Text('Payment'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Paid ₱${paid.toStringAsFixed(2)} • Balance ₱${balance.toStringAsFixed(2)}',
+                          ),
+                          const Divider(height: 24),
+                          if (payments.isEmpty)
+                            const Text('No payment records yet.')
+                          else
+                            ...payments.map(
+                              (payment) => ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  '₱${payment.amount.toStringAsFixed(2)}',
+                                ),
+                                subtitle: Text(
+                                  [
+                                    DateFormat.yMMMd().format(payment.date),
+                                    if (payment.note.trim().isNotEmpty)
+                                      payment.note,
+                                  ].join(' • '),
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.more_vert_rounded),
+                                  tooltip: 'Payment actions',
+                                  onPressed: payment.id == null
+                                      ? null
+                                      : () => showModalBottomSheet(
+                                          context: context,
+                                          builder: (context) => SafeArea(
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                ListTile(
+                                                  leading: const Icon(
+                                                    Icons.edit_rounded,
+                                                  ),
+                                                  title: const Text('Edit'),
+                                                  onTap: () {
+                                                    Navigator.pop(context);
+                                                    _showEditPaymentDialog(
+                                                      provider,
+                                                      payment,
+                                                    );
+                                                  },
+                                                ),
+                                                ListTile(
+                                                  leading: const Icon(
+                                                    Icons.delete_rounded,
+                                                  ),
+                                                  title: const Text('Delete'),
+                                                  onTap: () {
+                                                    Navigator.pop(context);
+                                                    provider.deletePayment(
+                                                      payment,
+                                                    );
+                                                  },
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
@@ -354,7 +549,7 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
                           ),
                         )
                       : const Text(
-                          'Update Order',
+                          'Update Entry',
                           style: TextStyle(fontSize: 18),
                         ),
                 ),

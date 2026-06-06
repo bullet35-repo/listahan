@@ -146,14 +146,14 @@ class _MainShellState extends State<MainShell> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Export Orders',
+                'Export Entries',
                 style: Theme.of(
                   context,
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
-                '${orders.length} orders (current month filter)',
+                '${orders.length} entries (current month filter)',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(
                     context,
@@ -198,10 +198,116 @@ class _MainShellState extends State<MainShell> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    ExportService.exportBackup(
+                      orders: provider.orders,
+                      payments: provider.payments,
+                    );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Backup export started')),
+                    );
+                  },
+                  icon: const Icon(Icons.backup_rounded),
+                  label: const Text('Backup JSON'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showRestoreDialog(context, provider);
+                  },
+                  icon: const Icon(Icons.restore_rounded),
+                  label: const Text('Restore JSON'),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _showRestoreDialog(
+    BuildContext context,
+    OrderProvider provider,
+  ) async {
+    final controller = TextEditingController();
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore Backup'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: controller,
+            minLines: 6,
+            maxLines: 10,
+            decoration: const InputDecoration(
+              labelText: 'Paste backup JSON',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.restore_rounded),
+            label: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+
+    final backup = controller.text;
+    if (submitted != true || backup.trim().isEmpty || !context.mounted) return;
+
+    try {
+      final preview = provider.previewBackupJson(backup);
+      if (!context.mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Confirm Restore'),
+          content: Text(
+            'This will replace local data with ${preview.entries} entries, '
+            '${preview.payments} payments, and ${preview.types} types.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(context, true),
+              icon: const Icon(Icons.restore_rounded),
+              label: const Text('Restore'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !context.mounted) return;
+      await provider.restoreBackupJson(backup);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Backup restored')));
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Restore failed: $e')));
+    }
   }
 }

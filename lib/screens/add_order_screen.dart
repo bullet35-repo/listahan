@@ -96,14 +96,14 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
       if (!mounted) return;
       _hapticSuccess();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order saved successfully!')),
+        const SnackBar(content: Text('Entry saved successfully!')),
       );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to save order: $e'),
+          content: Text('Failed to save entry: $e'),
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
@@ -116,7 +116,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Add Order'),
+        title: const Text('Add Entry'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.pop(context),
@@ -333,7 +333,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                           ),
                         )
                       : const Text(
-                          'Save Order',
+                          'Save Entry',
                           style: TextStyle(fontSize: 18),
                         ),
                 ),

@@ -116,6 +116,127 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return SizedBox(height: height, child: chart);
   }
 
+  Widget _typeSummary(OrderProvider provider, DateTime cutoff) {
+    final selectedType = _type == _allTypes ? null : _type;
+    final summaries = provider.orderTypes
+        .map((type) {
+          final entries = provider.orders
+              .where(
+                (entry) =>
+                    entry.type == type &&
+                    (entry.date.isAfter(cutoff) ||
+                        entry.date.isAtSameMomentAs(cutoff)) &&
+                    (selectedType == null || entry.type == selectedType),
+              )
+              .toList();
+          final sales = entries.fold<double>(
+            0,
+            (sum, entry) => sum + entry.price,
+          );
+          return (type: type, count: entries.length, sales: sales);
+        })
+        .where((summary) => summary.count > 0);
+
+    if (summaries.isEmpty) return const SizedBox.shrink();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final summary in summaries)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Chip(
+                avatar: const Icon(Icons.category_rounded, size: 16),
+                label: Text(
+                  '${summary.type}: ${summary.count} • ₱${summary.sales.toStringAsFixed(0)}',
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reportKpis(OrderProvider provider, DateTime cutoff) {
+    final entries = provider.orders
+        .where(
+          (entry) =>
+              (entry.date.isAfter(cutoff) ||
+                  entry.date.isAtSameMomentAs(cutoff)) &&
+              (_type == _allTypes || entry.type == _type),
+        )
+        .toList();
+    if (entries.isEmpty) return const SizedBox.shrink();
+
+    final totalSales = entries.fold<double>(
+      0,
+      (sum, entry) => sum + entry.price,
+    );
+    final totalPaid = entries.fold<double>(
+      0,
+      (sum, entry) => sum + provider.paidTotalForOrder(entry.id ?? -1),
+    );
+    final collectionRate = totalSales <= 0 ? 0 : (totalPaid / totalSales) * 100;
+    final customerTotals = <String, double>{};
+    for (final entry in entries) {
+      customerTotals.update(
+        entry.customerName,
+        (value) => value + entry.price,
+        ifAbsent: () => entry.price,
+      );
+    }
+    final topCustomer = customerTotals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Row(
+      children: [
+        Expanded(
+          child: _kpiCard(
+            'Collection',
+            '${collectionRate.toStringAsFixed(0)}%',
+            Icons.payments_rounded,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _kpiCard(
+            'Top Customer',
+            topCustomer.first.key,
+            Icons.person_rounded,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _kpiCard(String label, String value, IconData icon) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(fontSize: 12)),
+                  Text(
+                    value,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<OrderProvider>();
@@ -127,6 +248,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
     final labels = _labelsForMonths(_months);
     final orderTypes = provider.orderTypes;
+    final cutoff = DateTime(
+      DateTime.now().year,
+      DateTime.now().month - _months + 1,
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('Reports')),
@@ -178,6 +303,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ],
             ),
             const SizedBox(height: 16),
+            _reportKpis(provider, cutoff),
+            const SizedBox(height: 12),
+            _typeSummary(provider, cutoff),
+            const SizedBox(height: 12),
             Text('Sales', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             _reportChart(

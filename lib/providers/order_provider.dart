@@ -1,7 +1,31 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/order.dart';
+import '../models/payment.dart';
 import '../database/database_helper.dart';
+
+enum EntryDateFilter { today, week, month }
+
+class BackupPreview {
+  final int entries;
+  final int payments;
+  final int types;
+
+  const BackupPreview({
+    required this.entries,
+    required this.payments,
+    required this.types,
+  });
+}
+
+class BackupData {
+  final List<OrderItem> orders;
+  final List<PaymentRecord> payments;
+
+  const BackupData({required this.orders, required this.payments});
+}
 
 class OrderProvider with ChangeNotifier {
   static const String _customTypesKey = 'custom_order_types';
@@ -17,6 +41,7 @@ class OrderProvider with ChangeNotifier {
   ];
 
   List<OrderItem> _orders = [];
+  List<PaymentRecord> _payments = [];
   List<String> _customTypes = [];
   List<String> _deletedDefaultTypes = [];
   bool _isLoading = false;
@@ -27,11 +52,14 @@ class OrderProvider with ChangeNotifier {
   String _searchQuery = '';
   PaymentStatus? _paymentFilter;
   String? _typeFilter;
+  EntryDateFilter _dateFilter = EntryDateFilter.month;
 
   List<OrderItem> get orders => _orders;
+  List<PaymentRecord> get payments => _payments;
   PaymentStatus? get paymentFilter => _paymentFilter;
   String? get typeFilter => _typeFilter;
   String get searchQuery => _searchQuery;
+  EntryDateFilter get dateFilter => _dateFilter;
   bool get isLoading => _isLoading;
   int get selectedMonth => _selectedMonth;
   int get selectedYear => _selectedYear;
@@ -59,6 +87,32 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void setDateFilter(EntryDateFilter filter) {
+    _dateFilter = filter;
+    notifyListeners();
+  }
+
+  bool _matchesDateFilter(OrderItem order) {
+    final now = DateTime.now();
+    switch (_dateFilter) {
+      case EntryDateFilter.today:
+        return order.date.year == now.year &&
+            order.date.month == now.month &&
+            order.date.day == now.day;
+      case EntryDateFilter.week:
+        final startOfToday = DateTime(now.year, now.month, now.day);
+        final startOfWeek = startOfToday.subtract(
+          Duration(days: startOfToday.weekday - 1),
+        );
+        final endOfWeek = startOfWeek.add(const Duration(days: 7));
+        return !order.date.isBefore(startOfWeek) &&
+            order.date.isBefore(endOfWeek);
+      case EntryDateFilter.month:
+        return order.date.year == _selectedYear &&
+            order.date.month == _selectedMonth;
+    }
+  }
+
   List<String> get orderTypes {
     final visibleDefaultTypes = defaultTypes.where(
       (type) => !_deletedDefaultTypes.any(
@@ -79,6 +133,25 @@ class OrderProvider with ChangeNotifier {
 
   int orderCountForType(String type) {
     return _orders.where((order) => order.type == type).length;
+  }
+
+  List<PaymentRecord> paymentsForOrder(int orderId) {
+    return _payments.where((payment) => payment.orderId == orderId).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+  }
+
+  double paidTotalForOrder(int orderId) {
+    return paymentsForOrder(
+      orderId,
+    ).fold(0.0, (sum, payment) => sum + payment.amount);
+  }
+
+  double balanceForOrder(OrderItem order) {
+    final orderId = order.id;
+    final paid = orderId == null
+        ? order.paidAmount
+        : paidTotalForOrder(orderId);
+    return (order.price - paid).clamp(0, order.price).toDouble();
   }
 
   Future<void> _saveCustomTypes() async {
@@ -182,11 +255,7 @@ class OrderProvider with ChangeNotifier {
   }
 
   List<OrderItem> get filteredOrders {
-    var list = _orders
-        .where(
-          (o) => o.date.year == _selectedYear && o.date.month == _selectedMonth,
-        )
-        .toList();
+    var list = _orders.where(_matchesDateFilter).toList();
     if (_searchQuery.isNotEmpty) {
       list = list.where((o) {
         final cust = o.customerName.toLowerCase();
@@ -214,53 +283,7 @@ class OrderProvider with ChangeNotifier {
     try {
       await _loadCustomTypes();
       _orders = await _dbHelper.getOrders();
-
-      // Seed sample data in debug mode when database is empty to demo charts
-      if (_orders.isEmpty && kDebugMode) {
-        final now = DateTime.now();
-        final samples = [
-          OrderItem(
-            customerName: 'Alice',
-            itemName: 'Shirt',
-            price: 500,
-            commission: 50,
-            date: now.subtract(const Duration(days: 40)),
-            paymentStatus: PaymentStatus.paid,
-            paidAmount: 500,
-          ),
-          OrderItem(
-            customerName: 'Bob',
-            itemName: 'Pants',
-            price: 1200,
-            commission: 120,
-            date: now.subtract(const Duration(days: 25)),
-            paymentStatus: PaymentStatus.partial,
-            paidAmount: 600,
-          ),
-          OrderItem(
-            customerName: 'Cathy',
-            itemName: 'Shoes',
-            price: 850,
-            commission: 85,
-            date: now.subtract(const Duration(days: 10)),
-            paymentStatus: PaymentStatus.unpaid,
-            paidAmount: 0,
-          ),
-          OrderItem(
-            customerName: 'Dave',
-            itemName: 'Hat',
-            price: 300,
-            commission: 30,
-            date: now.subtract(const Duration(days: 3)),
-            paymentStatus: PaymentStatus.paid,
-            paidAmount: 300,
-          ),
-        ];
-        for (final s in samples) {
-          await _dbHelper.insertOrder(s);
-        }
-        _orders = await _dbHelper.getOrders();
-      }
+      _payments = await _dbHelper.getPayments();
     } catch (e) {
       if (kDebugMode) {
         print("Error fetching orders: $e");
@@ -272,7 +295,17 @@ class OrderProvider with ChangeNotifier {
   }
 
   Future<void> addOrder(OrderItem order) async {
-    await _dbHelper.insertOrder(order);
+    final id = await _dbHelper.insertOrder(order);
+    if (order.paidAmount > 0) {
+      await _dbHelper.insertPayment(
+        PaymentRecord(
+          orderId: id,
+          amount: order.paidAmount,
+          date: order.date,
+          note: 'Initial payment',
+        ),
+      );
+    }
     await fetchOrders();
   }
 
@@ -284,6 +317,108 @@ class OrderProvider with ChangeNotifier {
   Future<void> deleteOrder(int id) async {
     await _dbHelper.deleteOrder(id);
     await fetchOrders();
+  }
+
+  BackupData parseBackupJson(String rawJson) {
+    final decoded = jsonDecode(rawJson) as Map<String, dynamic>;
+    final orderRows = (decoded['orders'] as List? ?? [])
+        .whereType<Map>()
+        .map((row) => OrderItem.fromMap(Map<String, dynamic>.from(row)))
+        .toList();
+    final paymentRows = (decoded['payments'] as List? ?? [])
+        .whereType<Map>()
+        .map((row) => PaymentRecord.fromMap(Map<String, dynamic>.from(row)))
+        .toList();
+    return BackupData(orders: orderRows, payments: paymentRows);
+  }
+
+  BackupPreview previewBackupJson(String rawJson) {
+    final backup = parseBackupJson(rawJson);
+    return BackupPreview(
+      entries: backup.orders.length,
+      payments: backup.payments.length,
+      types: backup.orders.map((order) => order.type).toSet().length,
+    );
+  }
+
+  Future<void> restoreBackupJson(String rawJson) async {
+    final backup = parseBackupJson(rawJson);
+    await _dbHelper.replaceBackup(
+      orders: backup.orders,
+      payments: backup.payments,
+    );
+    await fetchOrders();
+  }
+
+  Future<void> addPayment({
+    required OrderItem order,
+    required double amount,
+    DateTime? date,
+    String note = '',
+  }) async {
+    final orderId = order.id;
+    if (orderId == null || amount <= 0) return;
+    final balance = balanceForOrder(order);
+    if (amount > balance) {
+      throw ArgumentError('Payment cannot exceed remaining balance.');
+    }
+    await _dbHelper.insertPayment(
+      PaymentRecord(
+        orderId: orderId,
+        amount: amount,
+        date: date ?? DateTime.now(),
+        note: note,
+      ),
+    );
+    await _syncOrderPayment(order);
+    await fetchOrders();
+  }
+
+  Future<void> updatePayment({
+    required PaymentRecord payment,
+    required double amount,
+    required DateTime date,
+    String note = '',
+  }) async {
+    if (payment.id == null || amount <= 0) return;
+    final order = _orders.firstWhere((order) => order.id == payment.orderId);
+    final paidWithoutThis = paidTotalForOrder(order.id!) - payment.amount;
+    final maxAmount = (order.price - paidWithoutThis).clamp(0, order.price);
+    if (amount > maxAmount) {
+      throw ArgumentError('Payment cannot exceed remaining balance.');
+    }
+    await _dbHelper.updatePayment(
+      payment.copyWith(amount: amount, date: date, note: note),
+    );
+    await _syncOrderPayment(order);
+    await fetchOrders();
+  }
+
+  Future<void> deletePayment(PaymentRecord payment) async {
+    await _dbHelper.deletePayment(payment.id!);
+    final order = _orders.firstWhere((order) => order.id == payment.orderId);
+    await _syncOrderPayment(order);
+    await fetchOrders();
+  }
+
+  Future<void> _syncOrderPayment(OrderItem order) async {
+    final orderId = order.id;
+    if (orderId == null) return;
+    final freshPayments = await _dbHelper.getPayments();
+    final paid = freshPayments
+        .where((payment) => payment.orderId == orderId)
+        .fold(0.0, (sum, payment) => sum + payment.amount);
+    final status = paid <= 0
+        ? PaymentStatus.unpaid
+        : paid >= order.price
+        ? PaymentStatus.paid
+        : PaymentStatus.partial;
+    await _dbHelper.updateOrder(
+      order.copyWith(
+        paidAmount: paid.clamp(0, order.price),
+        paymentStatus: status,
+      ),
+    );
   }
 
   List<OrderItem> ordersForMonth(int month, int year, {String? type}) {
@@ -298,7 +433,10 @@ class OrderProvider with ChangeNotifier {
   }
 
   List<OrderItem> get summaryOrdersThisMonth {
-    return ordersForMonth(_selectedMonth, _selectedYear, type: _typeFilter);
+    return _orders
+        .where(_matchesDateFilter)
+        .where((order) => _typeFilter == null || order.type == _typeFilter)
+        .toList();
   }
 
   double get totalIncomeThisMonth {

@@ -4,6 +4,7 @@ import 'providers/order_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/add_order_screen.dart';
 import 'screens/edit_order_screen.dart';
+import 'screens/entry_detail_screen.dart';
 import 'screens/main_shell.dart';
 import 'screens/orders_list_screen.dart';
 import 'screens/reports_screen.dart';
@@ -11,7 +12,8 @@ import 'models/order.dart';
 
 import 'database/database_init_stub.dart'
     if (dart.library.html) 'database/database_init_web.dart'
-    if (dart.library.io) 'database/database_init_io.dart' as db_init;
+    if (dart.library.io) 'database/database_init_io.dart'
+    as db_init;
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,23 +42,29 @@ class BotoysListahanApp extends StatelessWidget {
           theme: _buildTheme(Brightness.light),
           darkTheme: _buildTheme(Brightness.dark),
           themeMode: themeProvider.themeMode,
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const MainShell(),
-        '/add_order': (context) => const AddOrderScreen(),
-        '/orders_list': (context) => const OrdersListScreen(),
-        '/reports': (context) => const ReportsScreen(),
-      },
-      onGenerateRoute: (settings) {
-        if (settings.name == '/edit_order') {
-          final order = settings.arguments as OrderItem;
-          return MaterialPageRoute(
-            builder: (context) => EditOrderScreen(order: order),
-          );
-        }
-        return null; // fallback
-      },
-      debugShowCheckedModeBanner: false,
+          initialRoute: '/',
+          routes: {
+            '/': (context) => const MainShell(),
+            '/add_order': (context) => const AddOrderScreen(),
+            '/orders_list': (context) => const OrdersListScreen(),
+            '/reports': (context) => const ReportsScreen(),
+          },
+          onGenerateRoute: (settings) {
+            if (settings.name == '/edit_order') {
+              final order = settings.arguments as OrderItem;
+              return MaterialPageRoute(
+                builder: (context) => EditOrderScreen(order: order),
+              );
+            }
+            if (settings.name == '/entry_detail') {
+              final order = settings.arguments as OrderItem;
+              return MaterialPageRoute(
+                builder: (context) => EntryDetailScreen(order: order),
+              );
+            }
+            return null; // fallback
+          },
+          debugShowCheckedModeBanner: false,
         );
       },
     );
@@ -76,9 +84,7 @@ class BotoysListahanApp extends StatelessWidget {
       cardTheme: CardThemeData(
         color: isDark ? colorScheme.surfaceContainerHigh : Colors.white,
         elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       appBarTheme: AppBarTheme(
         centerTitle: false,
@@ -90,16 +96,11 @@ class BotoysListahanApp extends StatelessWidget {
           fontWeight: FontWeight.w600,
           color: colorScheme.onSurface,
         ),
-        iconTheme: IconThemeData(
-          color: colorScheme.onSurface,
-          size: 24,
-        ),
+        iconTheme: IconThemeData(color: colorScheme.onSurface, size: 24),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(

@@ -85,124 +85,44 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showAddTypeDialog(OrderProvider provider) async {
-    final controller = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-
     final type = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Type'),
-        content: Form(
-          key: formKey,
-          child: TextFormField(
-            controller: controller,
-            autofocus: true,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Type name',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.category_rounded),
-            ),
-            validator: (value) {
-              final type = value?.trim() ?? '';
-              if (type.isEmpty) return 'Please enter type name';
-              final exists = provider.orderTypes.any(
-                (t) => t.toLowerCase() == type.toLowerCase(),
-              );
-              if (exists) return 'Type already exists';
-              return null;
-            },
-            onFieldSubmitted: (_) {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(context, controller.text.trim());
-              }
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton.icon(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(context, controller.text.trim());
-              }
-            },
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add'),
-          ),
-        ],
+      builder: (context) => _TypeNameDialog(
+        title: 'Add Type',
+        actionLabel: 'Add',
+        actionIcon: Icons.add_rounded,
+        existingTypes: provider.orderTypes,
       ),
     );
 
-    controller.dispose();
     if (type == null || type.isEmpty) return;
-    await provider.addOrderType(type);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      provider.addOrderType(type);
+    });
   }
 
   Future<void> _showEditTypeDialog(
     OrderProvider provider,
     String currentType,
   ) async {
-    final controller = TextEditingController(text: currentType);
-    final formKey = GlobalKey<FormState>();
-
     final newType = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Type'),
-        content: Form(
-          key: formKey,
-          child: TextFormField(
-            controller: controller,
-            autofocus: true,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Type name',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.category_rounded),
-            ),
-            validator: (value) {
-              final type = value?.trim() ?? '';
-              if (type.isEmpty) return 'Please enter type name';
-              final exists = provider.orderTypes.any(
-                (t) =>
-                    t.toLowerCase() == type.toLowerCase() &&
-                    t.toLowerCase() != currentType.toLowerCase(),
-              );
-              if (exists) return 'Type already exists';
-              return null;
-            },
-            onFieldSubmitted: (_) {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(context, controller.text.trim());
-              }
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton.icon(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(context, controller.text.trim());
-              }
-            },
-            icon: const Icon(Icons.check_rounded),
-            label: const Text('Save'),
-          ),
-        ],
+      builder: (context) => _TypeNameDialog(
+        title: 'Edit Type',
+        actionLabel: 'Save',
+        actionIcon: Icons.check_rounded,
+        initialValue: currentType,
+        existingTypes: provider.orderTypes,
+        ignoredDuplicate: currentType,
       ),
     );
 
-    controller.dispose();
     if (newType == null || newType.isEmpty) return;
-    await provider.renameOrderType(currentType, newType);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      provider.renameOrderType(currentType, newType);
+    });
   }
 
   Future<void> _confirmDeleteType(OrderProvider provider, String type) async {
@@ -218,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
         content: Text(
           orderCount == 0
               ? 'This removes the type from your list.'
-              : '$orderCount order${orderCount == 1 ? '' : 's'} will move to $fallbackType.',
+              : '$orderCount entr${orderCount == 1 ? 'y' : 'ies'} will move to $fallbackType.',
         ),
         actions: [
           TextButton(
@@ -234,7 +154,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (confirmed == true) await provider.deleteOrderType(type);
+    if (confirmed != true) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      provider.deleteOrderType(type);
+    });
   }
 
   Future<void> _showManageTypesDialog(OrderProvider provider) async {
@@ -260,7 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: Text(type),
                     subtitle: Text(
                       '${provider.isDefaultType(type) ? 'Default type • ' : ''}'
-                      '$count order${count == 1 ? '' : 's'}',
+                      '$count entr${count == 1 ? 'y' : 'ies'}',
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -302,6 +226,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _handleTypeMenuSelection(OrderProvider provider, String type) {
+    HapticFeedback.selectionClick();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (type == _addType) {
+        _showAddTypeDialog(provider);
+        return;
+      }
+      if (type == _manageTypes) {
+        _showManageTypesDialog(provider);
+        return;
+      }
+      provider.setTypeFilter(type == _allTypes ? null : type);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -314,18 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
             return PopupMenuButton<String>(
               tooltip: 'Select type',
               initialValue: selectedType,
-              onSelected: (type) {
-                HapticFeedback.selectionClick();
-                if (type == _addType) {
-                  _showAddTypeDialog(provider);
-                  return;
-                }
-                if (type == _manageTypes) {
-                  _showManageTypesDialog(provider);
-                  return;
-                }
-                provider.setTypeFilter(type == _allTypes ? null : type);
-              },
+              onSelected: (type) => _handleTypeMenuSelection(provider, type),
               itemBuilder: (context) => [
                 CheckedPopupMenuItem<String>(
                   value: _allTypes,
@@ -394,7 +323,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Consumer<OrderProvider>(
               builder: (context, p, _) => Text(
-                'Order tracker${p.filteredOrders.isNotEmpty ? ' • ${p.filteredOrders.length} orders' : ''}',
+                'List tracker${p.filteredOrders.isNotEmpty ? ' • ${p.filteredOrders.length} entries' : ''}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                 ),
@@ -499,7 +428,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   children: [
                                     Expanded(
                                       child: _buildSummaryCard(
-                                        title: 'Total Orders',
+                                        title: 'Total Entries',
                                         value:
                                             '${orderProvider.totalOrdersThisMonth}',
                                         color: Colors.blueAccent,
@@ -536,6 +465,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 16),
                         _buildPeriodComparison(context, orderProvider),
+                        const SizedBox(height: 16),
+                        _buildTypeDashboard(context, orderProvider),
                       ],
                     ),
                   ),
@@ -581,6 +512,49 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            FilterChip(
+                              label: const Text('Today'),
+                              selected:
+                                  orderProvider.dateFilter ==
+                                  EntryDateFilter.today,
+                              onSelected: (_) {
+                                HapticFeedback.selectionClick();
+                                orderProvider.setDateFilter(
+                                  EntryDateFilter.today,
+                                );
+                              },
+                            ),
+                            FilterChip(
+                              label: const Text('Week'),
+                              selected:
+                                  orderProvider.dateFilter ==
+                                  EntryDateFilter.week,
+                              onSelected: (_) {
+                                HapticFeedback.selectionClick();
+                                orderProvider.setDateFilter(
+                                  EntryDateFilter.week,
+                                );
+                              },
+                            ),
+                            FilterChip(
+                              label: const Text('Month'),
+                              selected:
+                                  orderProvider.dateFilter ==
+                                  EntryDateFilter.month,
+                              onSelected: (_) {
+                                HapticFeedback.selectionClick();
+                                orderProvider.setDateFilter(
+                                  EntryDateFilter.month,
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
                         Wrap(
                           spacing: 8,
                           runSpacing: 4,
@@ -636,7 +610,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Recent Orders',
+                              'Recent Entries',
                               style: Theme.of(context).textTheme.titleLarge
                                   ?.copyWith(fontWeight: FontWeight.bold),
                             ),
@@ -685,9 +659,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               return await showDialog<bool>(
                                 context: context,
                                 builder: (ctx) => AlertDialog(
-                                  title: const Text('Delete Order'),
+                                  title: const Text('Delete Entry'),
                                   content: const Text(
-                                    'Are you sure you want to delete this order?',
+                                    'Are you sure you want to delete this entry?',
                                   ),
                                   actions: [
                                     TextButton(
@@ -709,11 +683,18 @@ class _HomeScreenState extends State<HomeScreen> {
                             onDismissed: (_) {
                               orderProvider.deleteOrder(order.id!);
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Order deleted')),
+                                const SnackBar(content: Text('Entry deleted')),
                               );
                             },
                             child: OrderCard(
                               order: order,
+                              onTap: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  '/entry_detail',
+                                  arguments: order,
+                                );
+                              },
                               onEdit: () {
                                 Navigator.pushNamed(
                                   context,
@@ -755,7 +736,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 24),
             Text(
-              'No orders yet',
+              'No entries yet',
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
@@ -763,7 +744,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Tap the + button to add an order.',
+              'Tap the + button to add an entry.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
@@ -922,6 +903,69 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildTypeDashboard(BuildContext context, OrderProvider provider) {
+    final types = provider.orderTypes;
+    final monthEntries = provider.ordersForMonth(
+      provider.selectedMonth,
+      provider.selectedYear,
+    );
+    final cards = types
+        .map((type) {
+          final entries = monthEntries
+              .where((entry) => entry.type == type)
+              .toList();
+          final sales = entries.fold<double>(
+            0,
+            (sum, entry) => sum + entry.price,
+          );
+          final balance = entries.fold<double>(
+            0,
+            (sum, entry) => sum + entry.balance,
+          );
+          return _TypeSummary(
+            type: type,
+            count: entries.length,
+            sales: sales,
+            balance: balance,
+          );
+        })
+        .where((summary) => summary.count > 0)
+        .toList();
+
+    if (cards.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Types',
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final summary in cards)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    avatar: const Icon(Icons.category_rounded, size: 16),
+                    label: Text(
+                      '${summary.type} • ${summary.count} • ₱${summary.sales.toStringAsFixed(0)}',
+                    ),
+                    onPressed: () => provider.setTypeFilter(summary.type),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildRemindersSection(BuildContext context, OrderProvider provider) {
     final upcoming = provider.upcomingOrOverdueOrders;
     final unpaidCount = provider.unpaidOrders.length;
@@ -972,8 +1016,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         Text(
                           unpaidCount == 0
-                              ? 'No unpaid orders.'
-                              : 'No orders with due dates.',
+                              ? 'No unpaid entries.'
+                              : 'No entries with due dates.',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -1084,8 +1128,8 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (BuildContext ctx) {
         return AlertDialog(
-          title: const Text('Delete Order'),
-          content: const Text('Are you sure you want to delete this order?'),
+          title: const Text('Delete Entry'),
+          content: const Text('Are you sure you want to delete this entry?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
@@ -1097,13 +1141,115 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.of(ctx).pop();
                 ScaffoldMessenger.of(
                   context,
-                ).showSnackBar(const SnackBar(content: Text('Order deleted')));
+                ).showSnackBar(const SnackBar(content: Text('Entry deleted')));
               },
               child: const Text('Delete', style: TextStyle(color: Colors.red)),
             ),
           ],
         );
       },
+    );
+  }
+}
+
+class _TypeSummary {
+  final String type;
+  final int count;
+  final double sales;
+  final double balance;
+
+  const _TypeSummary({
+    required this.type,
+    required this.count,
+    required this.sales,
+    required this.balance,
+  });
+}
+
+class _TypeNameDialog extends StatefulWidget {
+  final String title;
+  final String actionLabel;
+  final IconData actionIcon;
+  final List<String> existingTypes;
+  final String? initialValue;
+  final String? ignoredDuplicate;
+
+  const _TypeNameDialog({
+    required this.title,
+    required this.actionLabel,
+    required this.actionIcon,
+    required this.existingTypes,
+    this.initialValue,
+    this.ignoredDuplicate,
+  });
+
+  @override
+  State<_TypeNameDialog> createState() => _TypeNameDialogState();
+}
+
+class _TypeNameDialogState extends State<_TypeNameDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue ?? '');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_formKey.currentState!.validate()) {
+      Navigator.pop(context, _controller.text.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Type name',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.category_rounded),
+          ),
+          validator: (value) {
+            final type = value?.trim() ?? '';
+            if (type.isEmpty) return 'Please enter type name';
+
+            final ignored = widget.ignoredDuplicate?.toLowerCase();
+            final exists = widget.existingTypes.any((existingType) {
+              final normalized = existingType.toLowerCase();
+              return normalized == type.toLowerCase() && normalized != ignored;
+            });
+            if (exists) return 'Type already exists';
+            return null;
+          },
+          onFieldSubmitted: (_) => _submit(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: _submit,
+          icon: Icon(widget.actionIcon),
+          label: Text(widget.actionLabel),
+        ),
+      ],
     );
   }
 }

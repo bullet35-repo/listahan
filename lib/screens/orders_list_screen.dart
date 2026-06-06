@@ -74,8 +74,8 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Order'),
-        content: const Text('Are you sure you want to delete this order?'),
+        title: const Text('Delete Entry'),
+        content: const Text('Are you sure you want to delete this entry?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -87,7 +87,7 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
               Navigator.pop(ctx);
               ScaffoldMessenger.of(
                 context,
-              ).showSnackBar(const SnackBar(content: Text('Order deleted')));
+              ).showSnackBar(const SnackBar(content: Text('Entry deleted')));
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
@@ -109,7 +109,7 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Orders'),
+            const Text('Entries'),
             Consumer<OrderProvider>(
               builder: (context, p, _) => Text(
                 DateFormat.yMMMM().format(
@@ -155,6 +155,50 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          FilterChip(
+                            label: const Text('Today'),
+                            selected:
+                                orderProvider.dateFilter ==
+                                EntryDateFilter.today,
+                            onSelected: (_) {
+                              HapticFeedback.selectionClick();
+                              orderProvider.setDateFilter(
+                                EntryDateFilter.today,
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          FilterChip(
+                            label: const Text('Week'),
+                            selected:
+                                orderProvider.dateFilter ==
+                                EntryDateFilter.week,
+                            onSelected: (_) {
+                              HapticFeedback.selectionClick();
+                              orderProvider.setDateFilter(EntryDateFilter.week);
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          FilterChip(
+                            label: const Text('Month'),
+                            selected:
+                                orderProvider.dateFilter ==
+                                EntryDateFilter.month,
+                            onSelected: (_) {
+                              HapticFeedback.selectionClick();
+                              orderProvider.setDateFilter(
+                                EntryDateFilter.month,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
@@ -272,9 +316,9 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                               return await showDialog<bool>(
                                 context: context,
                                 builder: (ctx) => AlertDialog(
-                                  title: const Text('Delete Order'),
+                                  title: const Text('Delete Entry'),
                                   content: const Text(
-                                    'Are you sure you want to delete this order?',
+                                    'Are you sure you want to delete this entry?',
                                   ),
                                   actions: [
                                     TextButton(
@@ -296,11 +340,18 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                             onDismissed: (_) {
                               orderProvider.deleteOrder(order.id!);
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Order deleted')),
+                                const SnackBar(content: Text('Entry deleted')),
                               );
                             },
                             child: OrderCard(
                               order: order,
+                              onTap: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  '/entry_detail',
+                                  arguments: order,
+                                );
+                              },
                               onEdit: () {
                                 Navigator.pushNamed(
                                   context,
@@ -340,7 +391,7 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'No orders for this month',
+              'No entries for this month',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
@@ -348,7 +399,7 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Try a different month or add new orders.',
+              'Try a different month or add new entries.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
