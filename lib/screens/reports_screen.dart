@@ -45,8 +45,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 DropdownButton<int>(
                   value: _months,
                   items: [3, 6, 12]
-                                        .map((m) => DropdownMenuItem(value: m, child: Text('$m months')))
-                                        .toList(),
+                      .map(
+                        (m) => DropdownMenuItem(
+                          value: m,
+                          child: Text('$m months'),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (v) => setState(() => _months = v ?? 6),
                 ),
                 const Spacer(),
@@ -73,20 +78,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             showTitles: true,
                             getTitlesWidget: (v, meta) {
                               final idx = v.toInt();
-                              if (idx < 0 || idx >= labels.length) return const SizedBox.shrink();
-                              return SideTitleWidget(child: Text(labels[idx]), axisSide: meta.axisSide);
+                              if (idx < 0 || idx >= labels.length) {
+                                return const SizedBox.shrink();
+                              }
+
+                              return SideTitleWidget(
+                                axisSide: meta.axisSide,
+                                child: Text(labels[idx]),
+                              );
                             },
                           ),
                         ),
                         leftTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: true, reservedSize: 56),
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 56,
+                          ),
                         ),
                       ),
                       minX: 0,
                       maxX: (_months - 1).toDouble(),
                       lineBarsData: [
                         LineChartBarData(
-                          spots: List.generate(sales.length, (i) => FlSpot(i.toDouble(), sales[i])),
+                          spots: List.generate(
+                            sales.length,
+                            (i) => FlSpot(i.toDouble(), sales[i]),
+                          ),
                           isCurved: true,
                           dotData: FlDotData(show: true),
                           barWidth: 3,
@@ -114,20 +131,31 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             showTitles: true,
                             getTitlesWidget: (v, meta) {
                               final idx = v.toInt();
-                              if (idx < 0 || idx >= labels.length) return const SizedBox.shrink();
-                              return SideTitleWidget(child: Text(labels[idx]), axisSide: meta.axisSide);
+                              if (idx < 0 || idx >= labels.length) {
+                                return const SizedBox.shrink();
+                              }
+                              return SideTitleWidget(
+                                axisSide: meta.axisSide,
+                                child: Text(labels[idx]),
+                              );
                             },
                           ),
                         ),
                         leftTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: true, reservedSize: 56),
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 56,
+                          ),
                         ),
                       ),
                       minX: 0,
                       maxX: (_months - 1).toDouble(),
                       lineBarsData: [
                         LineChartBarData(
-                          spots: List.generate(commission.length, (i) => FlSpot(i.toDouble(), commission[i])),
+                          spots: List.generate(
+                            commission.length,
+                            (i) => FlSpot(i.toDouble(), commission[i]),
+                          ),
                           isCurved: true,
                           dotData: FlDotData(show: true),
                           barWidth: 3,
@@ -149,14 +177,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final now = DateTime.now();
     final monthsBack = _months;
     final cutoff = DateTime(now.year, now.month - monthsBack + 1);
-    final orders = provider.orders.where((o) => o.date.isAfter(cutoff) || o.date.isAtSameMomentAs(cutoff)).toList();
+    final orders = provider.orders
+        .where((o) => o.date.isAfter(cutoff) || o.date.isAtSameMomentAs(cutoff))
+        .toList();
     try {
       await ExportService.exportToCsv(orders);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Export started')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Export started')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }
   }
 }
