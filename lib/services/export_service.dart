@@ -8,11 +8,11 @@ import '../models/order.dart';
 class ExportService {
   static Future<void> exportToCsv(List<OrderItem> orders) async {
     final buffer = StringBuffer();
-    buffer.writeln('Date,Customer,Item,Price (₱),Commission (₱)');
+    buffer.writeln('Date,Customer,Item,Type,Price (₱),Commission (₱)');
     final dateFormat = DateFormat('yyyy-MM-dd');
     for (final o in orders) {
       buffer.writeln(
-        '"${dateFormat.format(o.date)}","${o.customerName}","${o.itemName}",${o.price},${o.commission}',
+        '"${dateFormat.format(o.date)}","${o.customerName}","${o.itemName}","${o.type}",${o.price},${o.commission}',
       );
     }
     final bytes = utf8.encode(buffer.toString());
@@ -55,6 +55,7 @@ class ExportService {
               2: const pw.FlexColumnWidth(2.5),
               3: const pw.FlexColumnWidth(1.5),
               4: const pw.FlexColumnWidth(1.5),
+              5: const pw.FlexColumnWidth(1.5),
             },
             children: [
               pw.TableRow(
@@ -63,6 +64,7 @@ class ExportService {
                   _cell('Date', isHeader: true),
                   _cell('Customer', isHeader: true),
                   _cell('Item', isHeader: true),
+                  _cell('Type', isHeader: true),
                   _cell('Price', isHeader: true),
                   _cell('Commission', isHeader: true),
                 ],
@@ -73,6 +75,7 @@ class ExportService {
                     _cell(dateFormat.format(o.date)),
                     _cell(o.customerName),
                     _cell(o.itemName),
+                    _cell(o.type),
                     _cell('₱${o.price.toStringAsFixed(2)}'),
                     _cell('₱${o.commission.toStringAsFixed(2)}'),
                   ],

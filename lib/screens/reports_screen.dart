@@ -13,7 +13,10 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
+  static const String _allTypes = 'All types';
+
   int _months = 6;
+  String _type = _allTypes;
 
   List<String> _labelsForMonths(int months) {
     final now = DateTime.now();
@@ -116,9 +119,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<OrderProvider>();
-    final sales = provider.salesSeries(months: _months);
-    final commission = provider.commissionSeries(months: _months);
+    final selectedType = _type == _allTypes ? null : _type;
+    final sales = provider.salesSeries(months: _months, type: selectedType);
+    final commission = provider.commissionSeries(
+      months: _months,
+      type: selectedType,
+    );
     final labels = _labelsForMonths(_months);
+    final orderTypes = provider.orderTypes;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Reports')),
@@ -127,10 +135,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const Text('Range:'),
-                const SizedBox(width: 12),
                 DropdownButton<int>(
                   value: _months,
                   items: [3, 6, 12]
@@ -143,7 +153,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       .toList(),
                   onChanged: (v) => setState(() => _months = v ?? 6),
                 ),
-                const Spacer(),
+                const Text('Type:'),
+                DropdownButton<String>(
+                  value: _type,
+                  items: [
+                    const DropdownMenuItem<String>(
+                      value: _allTypes,
+                      child: Text(_allTypes),
+                    ),
+                    ...orderTypes.map(
+                      (type) => DropdownMenuItem<String>(
+                        value: type,
+                        child: Text(type),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => setState(() => _type = v ?? _allTypes),
+                ),
                 FilledButton.icon(
                   onPressed: () => _exportCsv(provider),
                   icon: const Icon(Icons.table_chart_rounded),
@@ -179,7 +205,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final monthsBack = _months;
     final cutoff = DateTime(now.year, now.month - monthsBack + 1);
     final orders = provider.orders
-        .where((o) => o.date.isAfter(cutoff) || o.date.isAtSameMomentAs(cutoff))
+        .where(
+          (o) =>
+              (o.date.isAfter(cutoff) || o.date.isAtSameMomentAs(cutoff)) &&
+              (_type == _allTypes || o.type == _type),
+        )
         .toList();
     try {
       await ExportService.exportToCsv(orders);

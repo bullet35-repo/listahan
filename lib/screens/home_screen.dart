@@ -16,6 +16,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const String _allTypes = 'All types';
+  static const String _addType = 'Add type...';
+  static const String _manageTypes = 'Manage types...';
+
   final _searchController = TextEditingController();
 
   @override
@@ -80,21 +84,304 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _showAddTypeDialog(OrderProvider provider) async {
+    final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final type = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Type'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Type name',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.category_rounded),
+            ),
+            validator: (value) {
+              final type = value?.trim() ?? '';
+              if (type.isEmpty) return 'Please enter type name';
+              final exists = provider.orderTypes.any(
+                (t) => t.toLowerCase() == type.toLowerCase(),
+              );
+              if (exists) return 'Type already exists';
+              return null;
+            },
+            onFieldSubmitted: (_) {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context, controller.text.trim());
+              }
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context, controller.text.trim());
+              }
+            },
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+    if (type == null || type.isEmpty) return;
+    await provider.addOrderType(type);
+  }
+
+  Future<void> _showEditTypeDialog(
+    OrderProvider provider,
+    String currentType,
+  ) async {
+    final controller = TextEditingController(text: currentType);
+    final formKey = GlobalKey<FormState>();
+
+    final newType = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Type'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Type name',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.category_rounded),
+            ),
+            validator: (value) {
+              final type = value?.trim() ?? '';
+              if (type.isEmpty) return 'Please enter type name';
+              final exists = provider.orderTypes.any(
+                (t) =>
+                    t.toLowerCase() == type.toLowerCase() &&
+                    t.toLowerCase() != currentType.toLowerCase(),
+              );
+              if (exists) return 'Type already exists';
+              return null;
+            },
+            onFieldSubmitted: (_) {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context, controller.text.trim());
+              }
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context, controller.text.trim());
+              }
+            },
+            icon: const Icon(Icons.check_rounded),
+            label: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+    if (newType == null || newType.isEmpty) return;
+    await provider.renameOrderType(currentType, newType);
+  }
+
+  Future<void> _confirmDeleteType(OrderProvider provider, String type) async {
+    final orderCount = provider.orderCountForType(type);
+    final fallbackType = provider.orderTypes.firstWhere(
+      (orderType) => orderType != type,
+      orElse: () => 'another type',
+    );
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete $type?'),
+        content: Text(
+          orderCount == 0
+              ? 'This removes the type from your list.'
+              : '$orderCount order${orderCount == 1 ? '' : 's'} will move to $fallbackType.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.delete_rounded),
+            label: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) await provider.deleteOrderType(type);
+  }
+
+  Future<void> _showManageTypesDialog(OrderProvider provider) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Consumer<OrderProvider>(
+        builder: (context, provider, child) {
+          final types = provider.orderTypes;
+          return AlertDialog(
+            title: const Text('Manage Types'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: types.length,
+                separatorBuilder: (context, index) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final type = types[index];
+                  final count = provider.orderCountForType(type);
+                  final isLastType = types.length == 1;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(type),
+                    subtitle: Text(
+                      '${provider.isDefaultType(type) ? 'Default type • ' : ''}'
+                      '$count order${count == 1 ? '' : 's'}',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit_rounded),
+                          tooltip: 'Edit',
+                          onPressed: () => _showEditTypeDialog(provider, type),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_rounded),
+                          tooltip: isLastType
+                              ? 'At least one type is required'
+                              : 'Delete',
+                          onPressed: isLastType
+                              ? null
+                              : () => _confirmDeleteType(provider, type),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton.icon(
+                onPressed: () => _showAddTypeDialog(provider),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add Type'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Done'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isNarrow = MediaQuery.of(context).size.width < 400;
     return Scaffold(
       appBar: AppBar(
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: Icon(
-            Icons.checklist_rounded,
-            color: theme.colorScheme.primary,
-            size: 28,
-          ),
+        leading: Consumer<OrderProvider>(
+          builder: (context, provider, child) {
+            final selectedType = provider.typeFilter ?? _allTypes;
+            return PopupMenuButton<String>(
+              tooltip: 'Select type',
+              initialValue: selectedType,
+              onSelected: (type) {
+                HapticFeedback.selectionClick();
+                if (type == _addType) {
+                  _showAddTypeDialog(provider);
+                  return;
+                }
+                if (type == _manageTypes) {
+                  _showManageTypesDialog(provider);
+                  return;
+                }
+                provider.setTypeFilter(type == _allTypes ? null : type);
+              },
+              itemBuilder: (context) => [
+                CheckedPopupMenuItem<String>(
+                  value: _allTypes,
+                  checked: provider.typeFilter == null,
+                  child: const Text(_allTypes),
+                ),
+                for (final type in provider.orderTypes)
+                  CheckedPopupMenuItem<String>(
+                    value: type,
+                    checked: provider.typeFilter == type,
+                    child: Text(type),
+                  ),
+                const PopupMenuDivider(),
+                const PopupMenuItem<String>(
+                  value: _addType,
+                  child: Row(
+                    children: [
+                      Icon(Icons.add_rounded),
+                      SizedBox(width: 12),
+                      Text(_addType),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: _manageTypes,
+                  child: Row(
+                    children: [
+                      Icon(Icons.tune_rounded),
+                      SizedBox(width: 12),
+                      Text(_manageTypes),
+                    ],
+                  ),
+                ),
+              ],
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.checklist_rounded,
+                      color: theme.colorScheme.primary,
+                      size: 28,
+                    ),
+                    Icon(
+                      Icons.arrow_drop_down_rounded,
+                      color: theme.colorScheme.primary,
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
-        leadingWidth: 44,
+        leadingWidth: 56,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -198,7 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Summary for ${DateFormat.yMMMM().format(currentFilterDate)}',
+                          '${orderProvider.typeFilter ?? 'All types'} summary for ${DateFormat.yMMMM().format(currentFilterDate)}',
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
@@ -550,9 +837,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildPeriodComparison(BuildContext context, OrderProvider provider) {
     final prev = DateTime(provider.selectedYear, provider.selectedMonth, 0);
     final currSales = provider.totalSalesThisMonth;
-    final prevSales = provider.salesForMonth(prev.month, prev.year);
+    final prevSales = provider.salesForMonth(
+      prev.month,
+      prev.year,
+      type: provider.typeFilter,
+    );
     final currComm = provider.totalIncomeThisMonth;
-    final prevComm = provider.commissionForMonth(prev.month, prev.year);
+    final prevComm = provider.commissionForMonth(
+      prev.month,
+      prev.year,
+      type: provider.typeFilter,
+    );
     final salesDiff = currSales - prevSales;
     final commDiff = currComm - prevComm;
     final salesUp = salesDiff >= 0;

@@ -4,6 +4,7 @@ class OrderItem {
   final int? id;
   final String customerName;
   final String itemName;
+  final String type;
   final double price;
   final double commission;
   final DateTime date;
@@ -15,6 +16,7 @@ class OrderItem {
     this.id,
     required this.customerName,
     required this.itemName,
+    this.type = 'Bugasan',
     required this.price,
     required this.commission,
     required this.date,
@@ -30,6 +32,7 @@ class OrderItem {
       'id': id,
       'customerName': customerName,
       'itemName': itemName,
+      'type': type,
       'price': price,
       'commission': commission,
       'date': date.toIso8601String(),
@@ -51,6 +54,9 @@ class OrderItem {
       id: map['id'],
       customerName: map['customerName'],
       itemName: map['itemName'],
+      type: (map['type'] as String?)?.trim().isNotEmpty == true
+          ? (map['type'] as String).trim()
+          : 'Bugasan',
       price: (map['price'] as num?)?.toDouble() ?? 0,
       commission: (map['commission'] as num?)?.toDouble() ?? 0,
       date: DateTime.parse(map['date']),
@@ -64,6 +70,7 @@ class OrderItem {
     int? id,
     String? customerName,
     String? itemName,
+    String? type,
     double? price,
     double? commission,
     DateTime? date,
@@ -75,6 +82,7 @@ class OrderItem {
       id: id ?? this.id,
       customerName: customerName ?? this.customerName,
       itemName: itemName ?? this.itemName,
+      type: type ?? this.type,
       price: price ?? this.price,
       commission: commission ?? this.commission,
       date: date ?? this.date,

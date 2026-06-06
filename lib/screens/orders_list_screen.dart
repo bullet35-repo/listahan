@@ -49,7 +49,8 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
               final month = date.month;
               final year = date.year;
               final isSelected =
-                  provider.selectedMonth == month && provider.selectedYear == year;
+                  provider.selectedMonth == month &&
+                  provider.selectedYear == year;
               return ListTile(
                 title: Text(DateFormat.yMMMM().format(date)),
                 selected: isSelected,
@@ -84,9 +85,9 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
             onPressed: () {
               provider.deleteOrder(orderId);
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Order deleted')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Order deleted')));
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
@@ -169,30 +170,70 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                           const SizedBox(width: 8),
                           FilterChip(
                             label: const Text('Paid'),
-                            selected: orderProvider.paymentFilter == PaymentStatus.paid,
+                            selected:
+                                orderProvider.paymentFilter ==
+                                PaymentStatus.paid,
                             onSelected: (_) {
                               HapticFeedback.selectionClick();
-                              orderProvider.setPaymentFilter(PaymentStatus.paid);
+                              orderProvider.setPaymentFilter(
+                                PaymentStatus.paid,
+                              );
                             },
                           ),
                           const SizedBox(width: 8),
                           FilterChip(
                             label: const Text('Unpaid'),
-                            selected: orderProvider.paymentFilter == PaymentStatus.unpaid,
+                            selected:
+                                orderProvider.paymentFilter ==
+                                PaymentStatus.unpaid,
                             onSelected: (_) {
                               HapticFeedback.selectionClick();
-                              orderProvider.setPaymentFilter(PaymentStatus.unpaid);
+                              orderProvider.setPaymentFilter(
+                                PaymentStatus.unpaid,
+                              );
                             },
                           ),
                           const SizedBox(width: 8),
                           FilterChip(
                             label: const Text('Partial'),
-                            selected: orderProvider.paymentFilter == PaymentStatus.partial,
+                            selected:
+                                orderProvider.paymentFilter ==
+                                PaymentStatus.partial,
                             onSelected: (_) {
                               HapticFeedback.selectionClick();
-                              orderProvider.setPaymentFilter(PaymentStatus.partial);
+                              orderProvider.setPaymentFilter(
+                                PaymentStatus.partial,
+                              );
                             },
                           ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          FilterChip(
+                            label: const Text('All types'),
+                            selected: orderProvider.typeFilter == null,
+                            onSelected: (_) {
+                              HapticFeedback.selectionClick();
+                              orderProvider.setTypeFilter(null);
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          for (final type in orderProvider.orderTypes) ...[
+                            FilterChip(
+                              label: Text(type),
+                              selected: orderProvider.typeFilter == type,
+                              onSelected: (_) {
+                                HapticFeedback.selectionClick();
+                                orderProvider.setTypeFilter(type);
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                          ],
                         ],
                       ),
                     ),
@@ -237,7 +278,8 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                                   ),
                                   actions: [
                                     TextButton(
-                                      onPressed: () => Navigator.pop(ctx, false),
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
                                       child: const Text('Cancel'),
                                     ),
                                     TextButton(

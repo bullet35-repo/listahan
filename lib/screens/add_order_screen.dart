@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/order.dart';
 import '../providers/order_provider.dart';
+import '../widgets/order_type_field.dart';
 import 'package:intl/intl.dart';
 
 void _hapticSuccess() => HapticFeedback.mediumImpact();
@@ -18,6 +19,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
   final _formKey = GlobalKey<FormState>();
   final _customerNameController = TextEditingController();
   final _itemNameController = TextEditingController();
+  final _typeController = TextEditingController(text: 'Bugasan');
   final _priceController = TextEditingController();
   final _commissionController = TextEditingController();
   final _paidAmountController = TextEditingController(text: '0');
@@ -31,6 +33,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
   void dispose() {
     _customerNameController.dispose();
     _itemNameController.dispose();
+    _typeController.dispose();
     _priceController.dispose();
     _commissionController.dispose();
     _paidAmountController.dispose();
@@ -78,6 +81,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
     final order = OrderItem(
       customerName: _customerNameController.text,
       itemName: _itemNameController.text,
+      type: _typeController.text.trim(),
       price: price,
       commission: double.parse(_commissionController.text),
       date: _selectedDate,
@@ -154,6 +158,8 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                 },
               ),
               const SizedBox(height: 16),
+              OrderTypeField(controller: _typeController),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _priceController,
                 decoration: const InputDecoration(
@@ -206,12 +212,19 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
               const SizedBox(height: 16),
               SegmentedButton<PaymentStatus>(
                 segments: const [
-                  ButtonSegment(value: PaymentStatus.unpaid, label: Text('Unpaid')),
-                  ButtonSegment(value: PaymentStatus.partial, label: Text('Partial')),
+                  ButtonSegment(
+                    value: PaymentStatus.unpaid,
+                    label: Text('Unpaid'),
+                  ),
+                  ButtonSegment(
+                    value: PaymentStatus.partial,
+                    label: Text('Partial'),
+                  ),
                   ButtonSegment(value: PaymentStatus.paid, label: Text('Paid')),
                 ],
                 selected: {_paymentStatus},
-                onSelectionChanged: (s) => setState(() => _paymentStatus = s.first),
+                onSelectionChanged: (s) =>
+                    setState(() => _paymentStatus = s.first),
               ),
               if (_paymentStatus == PaymentStatus.partial) ...[
                 const SizedBox(height: 16),
@@ -222,9 +235,13 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                     border: OutlineInputBorder(),
                     prefixText: '₱ ',
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d*\.?\d{0,2}'),
+                    ),
                   ],
                   validator: (v) {
                     if (_paymentStatus != PaymentStatus.partial) return null;
@@ -272,9 +289,11 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                       _selectedDate,
                       DateTime.now().subtract(const Duration(days: 1)),
                     ),
-                    onSelected: (_) => setState(() =>
-                        _selectedDate =
-                            DateTime.now().subtract(const Duration(days: 1))),
+                    onSelected: (_) => setState(
+                      () => _selectedDate = DateTime.now().subtract(
+                        const Duration(days: 1),
+                      ),
+                    ),
                   ),
                 ],
               ),

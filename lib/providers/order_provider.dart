@@ -1,18 +1,36 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/order.dart';
 import '../database/database_helper.dart';
 
 class OrderProvider with ChangeNotifier {
+  static const String _customTypesKey = 'custom_order_types';
+  static const String _deletedDefaultTypesKey = 'deleted_default_order_types';
+
+  static const List<String> defaultTypes = [
+    'Bugasan',
+    'Listasan',
+    'Grocery',
+    'Ulam',
+    'Load',
+    'Others',
+  ];
+
   List<OrderItem> _orders = [];
+  List<String> _customTypes = [];
+  List<String> _deletedDefaultTypes = [];
   bool _isLoading = false;
+  bool _typesLoaded = false;
 
   int _selectedMonth = DateTime.now().month;
   int _selectedYear = DateTime.now().year;
   String _searchQuery = '';
   PaymentStatus? _paymentFilter;
+  String? _typeFilter;
 
   List<OrderItem> get orders => _orders;
   PaymentStatus? get paymentFilter => _paymentFilter;
+  String? get typeFilter => _typeFilter;
   String get searchQuery => _searchQuery;
   bool get isLoading => _isLoading;
   int get selectedMonth => _selectedMonth;
@@ -36,6 +54,133 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void setTypeFilter(String? filter) {
+    _typeFilter = filter;
+    notifyListeners();
+  }
+
+  List<String> get orderTypes {
+    final visibleDefaultTypes = defaultTypes.where(
+      (type) => !_deletedDefaultTypes.any(
+        (deletedType) => deletedType.toLowerCase() == type.toLowerCase(),
+      ),
+    );
+    final types = <String>{...visibleDefaultTypes, ..._customTypes};
+    for (final order in _orders) {
+      final type = order.type.trim();
+      if (type.isNotEmpty) types.add(type);
+    }
+    return types.toList()..sort((a, b) => a.compareTo(b));
+  }
+
+  bool isDefaultType(String type) {
+    return defaultTypes.any((t) => t.toLowerCase() == type.toLowerCase());
+  }
+
+  int orderCountForType(String type) {
+    return _orders.where((order) => order.type == type).length;
+  }
+
+  Future<void> _saveCustomTypes() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_customTypesKey, _customTypes);
+    await prefs.setStringList(_deletedDefaultTypesKey, _deletedDefaultTypes);
+  }
+
+  Future<void> _loadCustomTypes() async {
+    if (_typesLoaded) return;
+    final prefs = await SharedPreferences.getInstance();
+    _customTypes = prefs.getStringList(_customTypesKey) ?? [];
+    _deletedDefaultTypes = prefs.getStringList(_deletedDefaultTypesKey) ?? [];
+    _typesLoaded = true;
+  }
+
+  Future<void> addOrderType(String rawType) async {
+    final type = rawType.trim();
+    if (type.isEmpty) return;
+
+    final exists = orderTypes.any((t) => t.toLowerCase() == type.toLowerCase());
+    _deletedDefaultTypes = _deletedDefaultTypes
+        .where((deletedType) => deletedType.toLowerCase() != type.toLowerCase())
+        .toList();
+    if (!exists) {
+      _customTypes = [..._customTypes, type]..sort((a, b) => a.compareTo(b));
+    }
+    await _saveCustomTypes();
+
+    _typeFilter = orderTypes.firstWhere(
+      (t) => t.toLowerCase() == type.toLowerCase(),
+      orElse: () => type,
+    );
+    notifyListeners();
+  }
+
+  Future<void> renameOrderType(String oldType, String rawNewType) async {
+    final newType = rawNewType.trim();
+    if (oldType == newType || newType.isEmpty) return;
+
+    final oldLower = oldType.toLowerCase();
+    final newLower = newType.toLowerCase();
+    final duplicate = orderTypes.any(
+      (type) =>
+          type.toLowerCase() == newLower && type.toLowerCase() != oldLower,
+    );
+    if (duplicate) return;
+
+    final oldWasCustom = _customTypes.any((t) => t.toLowerCase() == oldLower);
+    final oldWasDefault = isDefaultType(oldType);
+    _customTypes = _customTypes
+        .where((t) => t.toLowerCase() != oldLower)
+        .toList();
+    if (oldWasDefault) {
+      _deletedDefaultTypes = {..._deletedDefaultTypes, oldType}.toList();
+    }
+    _deletedDefaultTypes = _deletedDefaultTypes
+        .where((deletedType) => deletedType.toLowerCase() != newLower)
+        .toList();
+    if (!isDefaultType(newType) &&
+        (oldWasCustom || oldWasDefault || orderCountForType(oldType) > 0)) {
+      _customTypes = [..._customTypes, newType]..sort((a, b) => a.compareTo(b));
+    }
+    await _saveCustomTypes();
+
+    await _dbHelper.updateOrderType(oldType, newType);
+    _orders = _orders
+        .map(
+          (order) =>
+              order.type == oldType ? order.copyWith(type: newType) : order,
+        )
+        .toList();
+    if (_typeFilter == oldType) _typeFilter = newType;
+    notifyListeners();
+  }
+
+  Future<void> deleteOrderType(String type) async {
+    final remainingTypes = orderTypes.where((orderType) => orderType != type);
+    if (remainingTypes.isEmpty) return;
+
+    _customTypes = _customTypes
+        .where((customType) => customType.toLowerCase() != type.toLowerCase())
+        .toList();
+    if (isDefaultType(type)) {
+      _deletedDefaultTypes = {..._deletedDefaultTypes, type}.toList();
+    }
+    await _saveCustomTypes();
+
+    if (orderCountForType(type) > 0) {
+      final fallbackType = remainingTypes.first;
+      await _dbHelper.updateOrderType(type, fallbackType);
+      _orders = _orders
+          .map(
+            (order) =>
+                order.type == type ? order.copyWith(type: fallbackType) : order,
+          )
+          .toList();
+    }
+    if (_typeFilter == type) _typeFilter = null;
+    notifyListeners();
+  }
+
   List<OrderItem> get filteredOrders {
     var list = _orders
         .where(
@@ -46,11 +191,17 @@ class OrderProvider with ChangeNotifier {
       list = list.where((o) {
         final cust = o.customerName.toLowerCase();
         final item = o.itemName.toLowerCase();
-        return cust.contains(_searchQuery) || item.contains(_searchQuery);
+        final type = o.type.toLowerCase();
+        return cust.contains(_searchQuery) ||
+            item.contains(_searchQuery) ||
+            type.contains(_searchQuery);
       }).toList();
     }
     if (_paymentFilter != null) {
       list = list.where((o) => o.paymentStatus == _paymentFilter).toList();
+    }
+    if (_typeFilter != null) {
+      list = list.where((o) => o.type == _typeFilter).toList();
     }
     list.sort((a, b) => b.date.compareTo(a.date)); // Newest first
     return list;
@@ -61,6 +212,7 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      await _loadCustomTypes();
       _orders = await _dbHelper.getOrders();
 
       // Seed sample data in debug mode when database is empty to demo charts
@@ -134,43 +286,66 @@ class OrderProvider with ChangeNotifier {
     await fetchOrders();
   }
 
-  double get totalIncomeThisMonth {
-    return filteredOrders.fold(0.0, (sum, item) => sum + item.commission);
-  }
-
-  double get totalSalesThisMonth {
-    return filteredOrders.fold(0.0, (sum, item) => sum + item.price);
-  }
-
-  int get totalOrdersThisMonth {
-    return filteredOrders.length;
-  }
-
-  List<OrderItem> ordersForMonth(int month, int year) {
+  List<OrderItem> ordersForMonth(int month, int year, {String? type}) {
     return _orders
-        .where((o) => o.date.month == month && o.date.year == year)
+        .where(
+          (o) =>
+              o.date.month == month &&
+              o.date.year == year &&
+              (type == null || o.type == type),
+        )
         .toList();
   }
 
-  double salesForMonth(int month, int year) {
-    return ordersForMonth(month, year).fold(0.0, (s, o) => s + o.price);
+  List<OrderItem> get summaryOrdersThisMonth {
+    return ordersForMonth(_selectedMonth, _selectedYear, type: _typeFilter);
   }
 
-  double commissionForMonth(int month, int year) {
-    return ordersForMonth(month, year).fold(0.0, (s, o) => s + o.commission);
+  double get totalIncomeThisMonth {
+    return summaryOrdersThisMonth.fold(
+      0.0,
+      (sum, item) => sum + item.commission,
+    );
   }
 
-  List<OrderItem> get unpaidOrders => _orders
-      .where((o) => o.paymentStatus != PaymentStatus.paid && o.balance > 0)
-      .toList()
-    ..sort((a, b) => (a.dueDate ?? a.date).compareTo(b.dueDate ?? b.date));
+  double get totalSalesThisMonth {
+    return summaryOrdersThisMonth.fold(0.0, (sum, item) => sum + item.price);
+  }
+
+  int get totalOrdersThisMonth {
+    return summaryOrdersThisMonth.length;
+  }
+
+  double salesForMonth(int month, int year, {String? type}) {
+    return ordersForMonth(
+      month,
+      year,
+      type: type,
+    ).fold(0.0, (s, o) => s + o.price);
+  }
+
+  double commissionForMonth(int month, int year, {String? type}) {
+    return ordersForMonth(
+      month,
+      year,
+      type: type,
+    ).fold(0.0, (s, o) => s + o.commission);
+  }
+
+  List<OrderItem> get unpaidOrders =>
+      _orders
+          .where((o) => o.paymentStatus != PaymentStatus.paid && o.balance > 0)
+          .toList()
+        ..sort((a, b) => (a.dueDate ?? a.date).compareTo(b.dueDate ?? b.date));
 
   List<OrderItem> get upcomingOrOverdueOrders {
     final list = _orders
-        .where((o) =>
-            o.paymentStatus != PaymentStatus.paid &&
-            o.balance > 0 &&
-            o.dueDate != null)
+        .where(
+          (o) =>
+              o.paymentStatus != PaymentStatus.paid &&
+              o.balance > 0 &&
+              o.dueDate != null,
+        )
         .toList();
     list.sort((a, b) => (a.dueDate!).compareTo(b.dueDate!));
     return list;
@@ -184,10 +359,11 @@ class OrderProvider with ChangeNotifier {
 
   /// Returns sales totals for the last [months] months.
   /// The returned list is ordered from oldest to newest.
-  List<double> salesSeries({int months = 6}) {
+  List<double> salesSeries({int months = 6, String? type}) {
     final now = DateTime.now();
     final series = List<double>.filled(months, 0.0);
     for (final o in _orders) {
+      if (type != null && o.type != type) continue;
       final diff = (now.year - o.date.year) * 12 + (now.month - o.date.month);
       if (diff >= 0 && diff < months) {
         final idx = months - 1 - diff; // oldest -> index 0
@@ -199,10 +375,11 @@ class OrderProvider with ChangeNotifier {
 
   /// Returns commission totals for the last [months] months.
   /// The returned list is ordered from oldest to newest.
-  List<double> commissionSeries({int months = 6}) {
+  List<double> commissionSeries({int months = 6, String? type}) {
     final now = DateTime.now();
     final series = List<double>.filled(months, 0.0);
     for (final o in _orders) {
+      if (type != null && o.type != type) continue;
       final diff = (now.year - o.date.year) * 12 + (now.month - o.date.month);
       if (diff >= 0 && diff < months) {
         final idx = months - 1 - diff;

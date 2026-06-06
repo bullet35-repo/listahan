@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/order.dart';
 import '../providers/order_provider.dart';
+import '../widgets/order_type_field.dart';
 import 'package:intl/intl.dart';
 
 void _hapticSuccess() => HapticFeedback.mediumImpact();
@@ -20,6 +21,7 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _customerNameController;
   late TextEditingController _itemNameController;
+  late TextEditingController _typeController;
   late TextEditingController _priceController;
   late TextEditingController _commissionController;
   late TextEditingController _paidAmountController;
@@ -36,6 +38,7 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
       text: widget.order.customerName,
     );
     _itemNameController = TextEditingController(text: widget.order.itemName);
+    _typeController = TextEditingController(text: widget.order.type);
     _priceController = TextEditingController(
       text: widget.order.price.toString(),
     );
@@ -54,6 +57,7 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
   void dispose() {
     _customerNameController.dispose();
     _itemNameController.dispose();
+    _typeController.dispose();
     _priceController.dispose();
     _commissionController.dispose();
     _paidAmountController.dispose();
@@ -101,6 +105,7 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
     final updatedOrder = widget.order.copyWith(
       customerName: _customerNameController.text,
       itemName: _itemNameController.text,
+      type: _typeController.text.trim(),
       price: price,
       commission: double.parse(_commissionController.text),
       date: _selectedDate,
@@ -111,8 +116,10 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
 
     setState(() => _isSaving = true);
     try {
-      await Provider.of<OrderProvider>(context, listen: false)
-          .updateOrder(updatedOrder);
+      await Provider.of<OrderProvider>(
+        context,
+        listen: false,
+      ).updateOrder(updatedOrder);
       if (!mounted) return;
       _hapticSuccess();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -178,6 +185,8 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
                 },
               ),
               const SizedBox(height: 16),
+              OrderTypeField(controller: _typeController),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _priceController,
                 decoration: const InputDecoration(
@@ -230,12 +239,19 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
               const SizedBox(height: 16),
               SegmentedButton<PaymentStatus>(
                 segments: const [
-                  ButtonSegment(value: PaymentStatus.unpaid, label: Text('Unpaid')),
-                  ButtonSegment(value: PaymentStatus.partial, label: Text('Partial')),
+                  ButtonSegment(
+                    value: PaymentStatus.unpaid,
+                    label: Text('Unpaid'),
+                  ),
+                  ButtonSegment(
+                    value: PaymentStatus.partial,
+                    label: Text('Partial'),
+                  ),
                   ButtonSegment(value: PaymentStatus.paid, label: Text('Paid')),
                 ],
                 selected: {_paymentStatus},
-                onSelectionChanged: (s) => setState(() => _paymentStatus = s.first),
+                onSelectionChanged: (s) =>
+                    setState(() => _paymentStatus = s.first),
               ),
               if (_paymentStatus == PaymentStatus.partial) ...[
                 const SizedBox(height: 16),
@@ -246,9 +262,13 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
                     border: OutlineInputBorder(),
                     prefixText: '₱ ',
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d*\.?\d{0,2}'),
+                    ),
                   ],
                 ),
               ],
@@ -290,9 +310,11 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
                       _selectedDate,
                       DateTime.now().subtract(const Duration(days: 1)),
                     ),
-                    onSelected: (_) => setState(() =>
-                        _selectedDate =
-                            DateTime.now().subtract(const Duration(days: 1))),
+                    onSelected: (_) => setState(
+                      () => _selectedDate = DateTime.now().subtract(
+                        const Duration(days: 1),
+                      ),
+                    ),
                   ),
                 ],
               ),
